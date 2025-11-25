@@ -26,6 +26,7 @@ use cpi_arguments qw( parse_arguments );
 use cpi_english qw( list_items );
 use cpi_compress_integer qw( compress_integer );
 use cpi_config qw( read_map );
+use cpi_reorder qw( reorder );
 use cpi_vars;
 
 #use Data::Dumper;
@@ -180,7 +181,7 @@ sub mplog
 sub CGI_show_screens
     {
     my @s = ( "<body",
-	" style=\"background-image:url('media/Quantum.gif');",
+	" style=\"background-image:url('media/background.gif');",
 	"background-size:cover;background-repeat:no-repeat;",
 	"background-position:center center;\">",
 	"<form><center><table>" );
