@@ -659,7 +659,9 @@ sub get_screen
 
     return $cgi_screen if( $cgi_screen=$SCREEN_MAP{$hostname} );
 
-    &fatal("Cannot determine screen from $hostname.");
+    return $cgi_screen if( $cgi_screen=$SCREEN_MAP{default} );
+
+    &fatal("Cannot determine screen from $hostname and there is no default.");
     }
 
 #########################################################################
