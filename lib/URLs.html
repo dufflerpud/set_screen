@@ -1,0 +1,58 @@
+<script>
+var timer_id;
+var window_ptr;
+var work_ptr;
+var last_url = '';
+var log_id;
+var SPAWN_METHOD = '%%SPAWN_METHOD%%';
+var last_modified = 0;
+
+function tick()
+    {
+    var d = new Date();
+    if( ! timer_id )
+	{
+	timer_id = setInterval('tick();',4000);
+	caller_ptr = (document.getElementById('work_frame'));
+	log_id = (document.getElementById('log_id'));
+	if( SPAWN_METHOD == 'frame' )
+	    { window_ptr = (document.getElementById('window_frame')); }
+	else if( SPAWN_METHOD == 'popup' )
+	    { window_ptr = window.open( '', 'front_window' ); }
+	else if( SPAWN_METHOD == 'window' )
+	    { window_ptr = window; }
+	if( ! window_ptr )
+    	    {alert('Could not bring up a '+SPAWN_METHOD+', fp='+(window_ptr||'UNDEF')+', cp='+(caller_ptr||'UNDEF'));}
+	}
+    caller_ptr.src = '';
+    caller_ptr.src = '%%SCREEN_URL%%?screen=%%SCREEN%%&func=urls&since="+last_modified+"&uniqid='+d.getTime();
+    // alert('Tick ends with ['+caller_ptr.src+']');
+    }
+
+function set_url( url, replace_window, new_last_modified )
+    {
+    //alert('set_url(' + url + ')');
+    if( last_url != url )
+	{
+	if( replace_window )
+	    {
+	    window.location = url;
+	    if( window_ptr ) { window_ptr.close(); }
+	    }
+	else if( SPAWN_METHOD == 'frame' )
+	    { window_ptr.src = url; }
+	else
+	    { window_ptr.location = url; }
+	if( ! log_id )
+	    { alert('log_id not set.'); }
+	log_id.innerHTML += ('<li>'+url+'<br>');
+	last_url = url;
+	}
+    last_modified = new_last_modified;
+    }
+</script>
+</head><body onLoad='tick();'>
+<div id=log_id>URLs:</div>
+<iframe id=work_frame style='display:none;'></iframe>
+<iframe id=window_frame width=100% height=100% frameborder=0 style='display:none;'></iframe>
+</body></html>

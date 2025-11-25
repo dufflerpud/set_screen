@@ -1,0 +1,671 @@
+<!doctype html>
+<head>
+<script>
+// alert("CMC Top of script");
+//	NOTE:  Do not use "for( const ... )" as it does not work on IOS 9.3.5
+//	browsers (or earlier).
+var SIZE = [	Math.floor(window.innerHeight/100)+1,
+		Math.floor(window.innerWidth /150)+1];
+//var SIZE = [	Math.floor(window.innerHeight/200)+1,
+//		Math.floor(window.innerWidth /300)+1];
+// SIZE = [ 2, 2 ];
+var at_location = new Array();
+
+var EMPTY = 0;
+var ORIGIN = new Array();
+for( var ind of SIZE )
+    { ORIGIN.push(0); }
+var work_frame_p;
+
+var current_blocks = new Array();
+var last_modified = 0;
+var DEBUG = 0;
+
+//////////////////////////////////////////////////////////////////////////
+//	Print the error message.  There really is no meaning to exiting	//
+//	in javascript.  Still, makes code more readable.		//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1001");
+function fatal( msg ) { alert( msg ); }
+
+//////////////////////////////////////////////////////////////////////////
+//	Print a message only if debug flag is turned on.		//
+//////////////////////////////////////////////////////////////////////////
+var debid;
+// alert("CMC 1002");
+function deblert( msg )
+    {
+    if( DEBUG )
+	{
+	if( ! debid ) { debid = idp('debug_output'); }
+	// debid.innerHTML += ( msg + "<br>" );
+	alert(msg);
+	}
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Change a coordinate into something that can be used as an index	//
+//	into a simple array or an HTML id.				//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1003");
+function coord_to_ind( coord )		{ return coord.join('_'); }
+// alert("CMC 1004");
+function ind_to_coord( ind )		{ return ind.split('_'); }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return an array of all coordinates from the specified corner	//
+//	of the specified size.  No recursion!  Handles multiple dims.	//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1005");
+function box( corner, size )
+    {
+    var result;
+
+    for( dim=0; dim<size.length; dim++ )
+	{
+	var ind = corner[dim];
+	var new_result = new Array();
+	for( var ctr=0; ctr<size[dim]; ctr++ )
+	    {
+	    if( ! result )
+	        { new_result.push( ind ); }
+	    else
+	        {
+		for( var old of result )
+		    { new_result.push( old + '_' + ind ); }
+		}
+	    ind++;
+	    }
+	result = new_result;
+	}
+    deblert('box(['+corner.join(':')+'],['+size.join(':')+']) returns ['+result.join(',')+']');
+    return result;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return coordinates for the entire workspace.			//
+//	Used often so cache results.					//
+//////////////////////////////////////////////////////////////////////////
+var all_coords_cache;
+// alert("CMC 1006");
+function all_coords()
+    {
+    if( ! all_coords_cache ) { all_coords_cache = box( ORIGIN, SIZE ); }
+    return all_coords_cache;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return a random integer.					//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1007");
+function rand( n )
+    {
+    return Math.floor( Math.random() * n );
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return text that can be used as a key into a hash for a block	//
+//////////////////////////////////////////////////////////////////////////
+var key_to_block = new Array();
+// alert("CMC 1008");
+function block_to_key( b )
+    {
+    var ret = b.text;
+    key_to_block[ret] = b;
+    return ret;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Remove a block from the screen.					//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1009");
+function remove_block( to_remove )
+    {
+    if( to_remove.coords_of )
+	{
+	for( var ind of to_remove.coords_of )
+	    { at_location[ind] = EMPTY; }
+	to_remove.coords_of = 0;
+	}
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return a vector that is the sum of each element of arg vectors	//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1010");
+function add_vectors( v0, v1 )
+    {
+    var res = new Array();
+    for( var i in v0 )
+	{ res.push( v0[i]*1 + v1[i]*1 ); }
+    // deblert('add_vectors('+v0.join(':')+','+v1.join(':')+') returns ['+res.join(':')+']');
+    return res;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return pointer to an HTML element given the specified id.	//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1011");
+function idp( id_name )
+    {
+    var p;
+    if( ! document )
+	{ fatal("Cannot find document"); }
+    else if( ! document.getElementById )
+	{ fatal("Cannot find document"); }
+    else if( ! (p = (document.getElementById(id_name)) ) )
+	{ fatal("Cannot find id="+id_name+" on page."); }
+    else
+        { return p; }
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Dismiss the picture.						//
+//////////////////////////////////////////////////////////////////////////
+function content_unclicked()
+    {
+    var blowup_p = idp('blowup');
+    blowup_p.style.display = 'none';
+    blowup_p.innerHTML = '';
+    (idp('big_table')).style.display = '';
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Return mime type of file based on filename's extension.		//
+//////////////////////////////////////////////////////////////////////////
+var EXTMAP =
+    {
+    mov:	"video/mp4",	// Should be video/quicktime
+    mp4:	"video/mp4",
+    ogg:	"video/ogg",
+    html:	"text/html",
+    htm:	"text/html",
+    text:	"text/plain",
+    txt:	"text/plain",
+    jpg:	"image/jpeg",
+    jpeg:	"image/jpeg",
+    webp:	"image/webp",
+    tiff:	"image/tiff",
+    png:	"image/png",
+    gif:	"image/gif"
+    };
+
+function get_mime( filename )
+    {
+    var ret = "text/plain";
+    if( /.*\.([^\.]*)$/.test(filename) && EXTMAP[ RegExp.$1 ] )
+	{ ret = EXTMAP[ RegExp.$1 ]; }
+    // alert('get_mime("'+filename+'") returns "'+ret+'".');
+    return ret;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	User clicked on an image (or movie).				//
+//////////////////////////////////////////////////////////////////////////
+function content_clicked( id )
+    {
+    var height = Math.floor(window.innerHeight);
+    (idp('big_table')).style.display = 'none';
+    var blowup_p = idp('blowup');
+    var b = current_blocks[id];
+    var filename = b.media;
+    var mime_type = get_mime( filename );
+    var s = new Array();
+    var colors = "background-color:"+b.bgcolor+";color:"+b.fgcolor;
+    s.push( "<table border=0 width=100% height="+height+"px style='"+colors+"'>" );
+    var attributes = b.attributes ||
+	( filename
+	? "valign=top align=center"
+	: "valign=middle align=center" );
+    s.push( "<tr><th width=100% height="+height+"px " + attributes );
+    s.push( " style='font-size:x-large;" + colors + "'");
+    s.push( " onClick='content_unclicked();'>" );
+    if(b.text) { s.push( "<table><tr><td>"+b.text+"</td></tr></table><br>" ); }
+    if( filename )
+	{
+	if( /video\//.test(mime_type) )
+	    {
+	    s.push('<video width=100% height=100% autoplay loop muted>');
+	    s.push('<source src="'+filename+'" type="'+mime_type+'">');
+	    s.push('You apparently cannot play movies.');
+	    s.push('</video>');
+	    }
+	else if( /image\//.test(mime_type) )
+	    { s.push('<img width=100% src="'+filename+'">'); }
+	else if( /text\//.test(mime_type) )
+	    {
+	    var fheight = Math.floor(3 * height / 4);
+	    s.push('<center><iframe style="'+colors+'" height='+fheight+'px width=95% src="'+filename+'" type="'+mime_type+'">');
+	    s.push('[no frames for "'+filename+'"]</iframe></center>');
+	    }
+	}
+    s.push( "</th></tr></table>" );
+    blowup_p.innerHTML = s.join("");
+    blowup_p.style.display = '';
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	User has clicked on a block with an action.			//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1012");
+function button_clicked( id, action )
+    {
+    current_blocks[id].wasclicked =
+	( ! current_blocks[id].wasclicked );
+    work_frame_p.src = '%%URL%%'
+	+ '?screen=%%SCREEN%%'
+	+ '&func=messages'
+	+ '&id=' + id
+	+ '&action=' + action
+	+ '&uniqid=' + (new Date().getTime());
+    // alert("Click went to ["+work_frame_p.src+"]");
+    redraw_blocks();
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Redraw all of the blocks on the page.				//
+//////////////////////////////////////////////////////////////////////////
+var old_screen = "";
+// alert("CMC 1013");
+function redraw_blocks()
+    {
+    var s = new Array();
+    var coords = new Array( SIZE.length );
+
+    // Since browsers are 2-d, this is all dimension dependent code
+    s.push("<table border=0 width=100% height=100% style='border-collapse:collapse;border:1px;background-color:#404040;'>");
+    var rowdim = 0;
+    var coldim = 1;
+    var size_in_pix =
+	[	Math.floor(window.innerHeight/SIZE[rowdim]),
+		Math.floor(window.innerWidth /SIZE[coldim])	]
+    s.push( '<tr><td height=0px width=0px></td>' );
+    for( coords[coldim]=0; coords[coldim]<SIZE[coldim]; coords[coldim]++ )
+	{ s.push( '<td width='+size_in_pix[coldim]+'px height=0px></td>' ); }
+    var seen_ind = {};
+    for( coords[rowdim]=0; coords[rowdim]<SIZE[rowdim]; coords[rowdim]++ )
+        {
+	s.push('</tr>\n<tr>');
+	s.push('<td height='+size_in_pix[rowdim]+'px width=0px></td>');
+        for( coords[coldim]=0; coords[coldim]<SIZE[coldim]; coords[coldim]++ )
+	    {
+	    var ind = coord_to_ind( coords );
+	    var blockptr = at_location[ ind ];
+	    if( ! blockptr )
+	        // { s.push('<td>'+ind+'</td>'); }
+	        { s.push('<td></td>'); }
+	    else if( seen_ind[blockptr.id] )
+		{
+		// s.push( '<td>:::' + ind + ':' + seen_ind[blockptr.id] + '</td>' );
+		}
+	    else
+	        {
+		seen_ind[blockptr.id] = blockptr.text + ' from ' + ind;
+		s.push( '<td ' );
+		if( blockptr.media )
+		    { s.push( "valign=top align=center" ); }
+		else
+		    { s.push( "valign=middle align=center" ); }
+		if( (blockptr.dims[rowdim]||1) > 1 )
+		    { s.push( ' rowspan='+(blockptr.dims[rowdim]) ); }
+		if( (blockptr.dims[coldim]||1) > 1 )
+		    { s.push( ' colspan='+(blockptr.dims[coldim]) ); }
+		var atts = new Array();
+		if( blockptr.fgcolor )
+		    {
+		    atts.push(
+			(blockptr.wasclicked?"background-color:":"color:")
+			+ blockptr.fgcolor );
+		    }
+		if( blockptr.bgcolor )
+		    {
+		    atts.push(
+			(blockptr.wasclicked?"color:":"background-color:")
+			+ blockptr.bgcolor );
+		    }
+		var mime_type = get_mime( blockptr.media );
+		if( blockptr.media && /image\//.test(mime_type) )
+		    {
+		    atts.push("background-image:url("+blockptr.media+")");
+		    atts.push("background-size:contain");
+		    atts.push("background-repeat:no-repeat");
+		    atts.push("background-position:center");
+		    }
+		if( blockptr.wasclicked )
+		    {
+		    atts.push("border:10px inset red");
+		    atts.push("border-color:#b0b0b0");
+		    atts.push("border-Radius:30px");
+		    }
+		else if( blockptr.button )
+		    {
+		    atts.push("border:10px outset black");
+		    atts.push("border-color:#b0b0b0");
+		    atts.push("border-Radius:30px");
+		    }
+		if( atts.length )
+		    { s.push(" style='"+atts.join(";")+"'"); }
+		if( blockptr.button )
+		    {
+		    s.push(" onClick='button_clicked(\""
+			+ blockptr.id + "\",\""
+			+ blockptr.button + "\");'" );
+		    }
+		else if( blockptr.media || blockptr.text )
+		    {
+		    s.push(" onClick='content_clicked(\""
+			+ blockptr.id + "\");'" );
+		    }
+		s.push('>');
+		// s.push( ind+': ' );
+		if( blockptr.text )
+		    { s.push( "<table><tr><td>"+blockptr.text+"</td></tr></table>" ); }
+		if( /video\//.test(mime_type) )
+		    {
+		    s.push('<video width=100% height=100% autoplay loop muted>');
+		    s.push('<source src="'+blockptr.media+'" type="'+mime_type+'">');
+		    s.push('You apparently cannot play movies.');
+		    s.push('</video>');
+		    }
+		s.push('</td>');
+		}
+	    }
+	}
+    s.push('</tr>\n</table>\n');
+    // (idp('big_table')).innerHTML = s.join('');
+    var new_screen = s.join('');
+    // alert( new_screen );
+    if( new_screen != old_screen )
+	{
+	// p = idp('big_table')
+	// p.innerHTML = new_screen;
+	(idp('big_table')).innerHTML = new_screen
+	old_screen = new_screen;
+	}
+    if( ! juggle_timer ) { juggle(); }
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+function count( ptr )
+    {
+    var ret = 0;
+    for( var ind in ptr )
+	{ ret++; }
+    return ret;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Placing a message (a block with a size, color, text, etc).	//
+//									//
+//	VERY dumb, but getting smarter.  Slowly.			//
+//									//
+//	Logic should be closer to something like:			//
+//		If we can find a big enough space with nothing in it,	//
+//		use that. ... a space of the lowest priority, use that.	//
+//		... or the next lowest priority ...			//
+//		If we hit the priority we're trying to place, delete	//
+//		randomly until we find space.  If there still is no	//
+//		space, give up, EVEN if we could get space by deleting	//
+//		a higher priority message.				//
+//									//
+//	Alas, one further wrinkle:  Really old machines can't handle	//
+//	more than 2 gifs at a time, and we probably don't want to load	//
+//	more than 2 movies at a time on even modern browsers.		//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1014");
+function place_block(to_place)
+    {
+    deblert('---- place_block('+to_place.text+') of priority '+to_place.priority+' ----');
+    remove_block( to_place );
+    var possible_places_to_put_block =
+	( ( to_place.location && to_place.location.length )
+	? [ coord_to_ind(to_place.location) ]
+	: all_coords() );
+    while(1)
+	{
+	var possible_starts = new Array();
+	for( var coord_ind of possible_places_to_put_block )
+	    {
+	    var coords = ind_to_coord( coord_ind );
+	    deblert("coord_ind=["+coord_ind+"]");
+	    looking_for = at_location[ coord_ind ];
+	    if( ! looking_for || looking_for.priority <= to_place.priority )
+		{
+		var new_coord_inds = new Array();
+		deblert("looking_for=["+looking_for+"]");
+		for( var offset_coord_ind of box( coords, to_place.dims ) )
+		    {
+		    var chk = at_location[ offset_coord_ind ];
+		    if( typeof chk!=='undefined' && ( chk==looking_for || chk==EMPTY ) )
+			{ new_coord_inds.push(offset_coord_ind); }
+		    else
+			{
+			new_coord_inds = 0;
+			break;
+			}
+		    }
+
+		if( new_coord_inds )
+		    {
+		    var p = ( looking_for ? looking_for.priority : 0 );
+		    if( ! possible_starts[p] )
+			{ possible_starts[p] = new Array(); }
+		    possible_starts[p].push( new_coord_inds );
+		    deblert('Pushing '+new_coord_inds[0]+'... onto priority='+p);
+		    }
+		}
+	    }
+	if( possible_starts.length > 0 )
+	    {
+	    for( var p=0; p<possible_starts.length; p++ )
+	        {
+		if( possible_starts[p] )
+		    {
+		    deblert("possible_starts["+p+"].length="+possible_starts[p].length);
+		    var new_block = possible_starts[p][ rand( possible_starts[p].length ) ];
+		    var old_value = at_location[ new_block[0] ];
+		    if( old_value != EMPTY )
+			{
+			deblert("Removing "+old_value+"("+old_value.text+",p="+old_value.priority+") in favor of "+to_place+"("+to_place.text+",p="+to_place.priority+").");
+			remove_block( old_value );
+			}
+		    // If we're here, we've found a space that is all one thing,
+		    // either empty (0) or another message.
+		    deblert('Placing '+to_place.text+' in '+new_block.join(',')+'.\n');
+		    for( var ind of new_block )
+			{ at_location[ind] = to_place; }
+		    to_place.coords_of = new_block;
+		    current_blocks[ to_place.id ] = to_place;
+		    // alert( to_place.id + '('+to_place.text+') placed.' );
+		    return new_block;
+		    }
+		}
+	    }
+
+	// If we're here, there is certainly not a big enough correctly shaped
+	// empty space for our block.  Not only that, but there isn't a single
+	// block that we can remove (with a priority less than the new one)
+	// that will make room.  Only one thing to do, start removing lowest
+	// priority blocks until there IS room.
+	var active = new Array();
+	var p;
+	// alert("About to check cb, length="+count(current_blocks));
+	for( var ind in current_blocks )
+	    {
+	    if( current_blocks[ind].coords_of )
+	        {
+		p = current_blocks[ind].priority;
+		if( ! active[ p ] ) { active[ p ] = new Array(); }
+		active[p].push(ind);
+		}
+	    }
+	// Did we find ANY blocks with priority less than ours to get rid of?
+	if( active.length <= 0 )
+	    {
+	    // alert('Cannot place '+to_place.id+' ('+to_place.text+')');
+	    return 0;
+	    }
+	// Keep removing blocks until there is room.
+	var num_removed = 0;
+	for( var p=1; p<active.length && p<=to_place.priority; p++ )
+	    {
+	    if( active[p] )
+		{
+		// alert('ai='+active_ind+', blkind='+(blkind||"UNDEF")+'.');
+		remove_block(
+		    current_blocks[active[p][rand(active[p].length)]] );
+		num_removed++;
+		break;
+		}
+	    }
+	if( num_removed == 0 )
+	    {
+	    // alert('No place to put '+to_place.ind+'('+to_place.text+') because there are higher priority blocks.');
+	    return 0;
+	    }
+	}
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Place an array of blocks.					//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1015");
+function update_blocks( new_blocks, new_last_modified )
+    {
+    // alert("new_last_modified="+new_last_modified);
+    var resulting_blocks = new Array();
+    for( var block_ind in current_blocks )
+	{
+	if( ! new_blocks[block_ind] )
+	    {
+	    remove_block( current_blocks[block_ind] );
+	    delete current_blocks[ block_ind ];
+	    }
+	}
+    for( var block_ind in new_blocks )
+	{
+	if( current_blocks[block_ind] )
+	    {
+	    resulting_blocks[block_ind] = current_blocks[block_ind];
+	    if( (new_blocks[block_ind].status_index||0)
+	      > (current_blocks[block_ind].status_index||0) )
+		{
+		resulting_blocks[block_ind].wasclicked = 0;
+		}
+	    for( var attr of
+		["bgcolor","fgcolor","text","image",
+		    "priority","attributes"] )
+		{
+	        resulting_blocks[block_ind][attr]
+		    = new_blocks[block_ind][attr];
+		}
+	    }
+	else
+	    {	// This is a new block
+	    resulting_blocks[block_ind] = new_blocks[block_ind];
+	    place_block( new_blocks[block_ind] );
+	    }
+	}
+    current_blocks = resulting_blocks;
+    redraw_blocks();
+    last_modified = new_last_modified;
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Some stuff might have been bumped off the screen, try to put it	//
+//	back on.							//
+//////////////////////////////////////////////////////////////////////////
+var juggle_timer;
+// alert("CMC 1016");
+function juggle()
+    {
+    var blocks_wanting_back_on_board = new Array();
+    var cbpri;
+    for( var block_ind in current_blocks )
+	{
+	var cur_block = current_blocks[block_ind];
+	if( ! cur_block.coords_of )
+	    {
+	    cbpri = cur_block.priority;
+	    if( ! blocks_wanting_back_on_board[cbpri] )
+		{ blocks_wanting_back_on_board[cbpri]=new Array(); }
+	    blocks_wanting_back_on_board[cbpri].push( cur_block );
+	    }
+	}
+    
+    // Only care about highest priority not appearing on the board
+    cbpri = blocks_wanting_back_on_board.length - 1;
+    if( cbpri > 0 )	// If we've one or more blocks of the highest
+	{		// priority not placed, pick one;
+	var blkind_to_try = rand( blocks_wanting_back_on_board[cbpri].length );
+	place_block( blocks_wanting_back_on_board[cbpri][blkind_to_try] );
+	}
+    juggle_timer = setTimeout( juggle, rand(4000)+100 );
+    redraw_blocks();
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+var my_ready_state = "ready to roll";
+function work_frame_ready()
+    {
+    my_ready_state = "ready_to_roll";
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Called occasionally to get an update from the server.		//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1017");
+var last_partial_url="";
+function tick()
+    {
+    // This URL will always be different so it should not cache
+    // work_frame_p.src = 'ws0.msg?uid='+(new Date().getTime());
+    var new_partial_url =
+	'%%MESSAGES_URL%%?screen=%%SCREEN%%&func=messages'
+	+ '&since='+last_modified;
+    // new_partial_url = "https://www.brightsands.com/sto/2048?murray=2";
+    var state = my_ready_state;
+    if( last_partial_url != new_partial_url || state != "loading" )
+	{
+	last_partial_url = new_partial_url;
+	my_ready_state = "loading";
+	work_frame_p.src = last_partial_url
+	    + '&uniqid=' + (new Date().getTime());
+	}
+    else
+	{
+	// Going to try being patient, hoping that if the connection
+	// fails, next time, state will not be "loading".
+	}
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Do all the javascript required to setup the page.		//
+//////////////////////////////////////////////////////////////////////////
+// alert("CMC 1018");
+var reload_timer;
+function setup()
+    {
+    work_frame_p = idp('work_frame');
+    for( var ind of all_coords() )
+    	{ at_location[ind] = EMPTY; }
+    setInterval( 'tick();', 5000 );
+    redraw_blocks();
+
+    // We really shouldn't have to do this, but the iPad-2s need it
+    reload_timer = setTimeout( 'location.reload();', 600000 );
+    }
+
+//////////////////////////////////////////////////////////////////////////
+//	Done with javascript, onto the html.				//
+//////////////////////////////////////////////////////////////////////////
+</script>
+</head>
+<body onLoad='setup();'>
+<iframe id=work_frame onload='work_frame_ready();' style='display:none'>iframe broken</iframe>
+<center id=big_table>JAVASCRIPT appears to be broken or really slow.</center>
+<center id=blowup width=100% style='display:none'></center>
+<div id=debug_output></div>
+</body></html>
