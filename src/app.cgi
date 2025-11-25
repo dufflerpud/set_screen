@@ -184,11 +184,15 @@ sub CGI_show_screens
 	"background-size:cover;background-repeat:no-repeat;",
 	"background-position:center center;\">",
 	"<form><center><table>" );
-    my @screen_order = sort &selected_screens();
-    @screen_order = ( $cgi_screen, grep( $_ ne $cgi_screen, @screen_order ) )
-	if( $cgi_screen && grep( $_ eq $cgi_screen, @screen_order ) );
-    foreach my $screen ( @screen_order )
+    my @screen_order = &reorder( {before=>[$cgi_screen]}, &selected_screens() );
+    print STDERR __LINE__, " screen_order=[",join(",",@screen_order),"]\n";
+    foreach my $screen (
+	&reorder(
+	    {before=>[$cgi_screen]},
+	    &selected_screens()
+	    ) )
 	{
+	print STDERR __LINE__, " screen=$screen\n";
 	my $bgcolor = ( $screen eq $cgi_screen ? "#c0d8ff" : "#c0c0c0" );
 	push( @s,
 	    "<tr bgcolor='$bgcolor'>",
