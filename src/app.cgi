@@ -18,6 +18,16 @@
 
 use strict;
 
+use lib "/usr/local/lib/perl";
+use cpi_file qw( read_file write_file echodo fatal files_in cleanup
+ read_lines );
+use cpi_cgi qw( CGIreceive CGIheader );
+use cpi_arguments qw( parse_arguments );
+use cpi_english qw( list_items );
+use cpi_compress_integer qw( compress_integer );
+use cpi_config qw( read_map );
+use cpi_vars;
+
 #use Data::Dumper;
 use JSON;
 
@@ -25,37 +35,20 @@ use JSON;
 
 my $LOGTAG = $$;
 my $LOGFILE = "/var/log/stderr/set_screen";
-#close( STDERR );
-#open( STDERR, ">> $LOGFILE" )
-#    || die("Cannot open stderr:  $!");
+close( STDERR );
+open( STDERR, ">> $LOGFILE" ) || die("Cannot open stderr:  $!");
 
-my $PROJECT		=	"set_screen";
-my $PROG		=	( $_ = $0, s+.*/++, s/\.[^\.]*$//, $_ );
-my $TMP			=	"/tmp/$PROG.$$";
-#my $TMP		=	"/tmp/$PROG";
-my @HARD_CODED_SCREENS	=	qw(	6H 6M 5Ul 5Ml 5Uc 5Mc 5L 5Ur 5Mr
-					4H 4M 4B 3Ul 3Ml 3Uc 3Mc 3L 3Ur 3Mr
-					2H 2M 2Lc 1M );
-push( @HARD_CODED_SCREENS, "fs0", "fs1", "fs2", "iphone", "ws0", "macbook", "devel", "ipad1", "ipad4-0", "iPad4-1" );
+my $TMP			=	"/tmp/$cpi_vars::PROG.$$";
+#my $TMP		=	"/tmp/$cpi_vars::PROG";
 
-my @KNOWN_URLS		=
-    (
-    { name=>"Jeffries",	url=>"http://www.brightsands.com/sto/jeffries.html" },
-    { name=>"Clock",	url=>"http://www.brightsands.com/sto/Clock.html" },
-    { name=>"Maze",	url=>"http://10.1.0.20/~chris/maze.html" },
-    #{ name=>"Slides",	url=>"http://10.1.0.20/~chris/Slide_Show?user=chris&password=ratcatcher" },
-    { name=>"CNN",	url=>"https://www.cnn.com" }
-    );
-
-my $BASEDIR		=	"%%PROJECTDIR%%";
-$BASEDIR		=	"/usr/local/projects/$PROG" if(! -d $BASEDIR);
-my $LIBDIR		=	"$BASEDIR/lib";
-my $URLS_SCRIPT		=	"$LIBDIR/URLs.html";
-my $MESSAGES_SCRIPT	=	"$LIBDIR/messages.html";
+my $LIBDIR		=	"$cpi_vars::BASEDIR/lib";
 
 my $WWWDIR		=	"%%WWWDIR%%";
-$WWWDIR			=	"/home/chris/public_html/$PROG"
+$WWWDIR			=	"/home/chris/public_html/$cpi_vars::PROG"
 				    if( ! -d $WWWDIR );
+
+my $URLS_SCRIPT		=	"$LIBDIR/URLs.html";
+my $MESSAGES_SCRIPT	=	"$LIBDIR/messages.html";
 
 my $ORIGIN		=	$ENV{SERVER_NAME} || "Not web";
 my $IP_BASE		=	"10.1.0";
@@ -68,55 +61,35 @@ my $MESSAGES_URL	=	"$URL";
 my $SCREEN_URL		=	"$URL";
 my $URL_FILE		=	"/usr/local/projects/octagon/cfg/urls.pl";
 
-my $URL_DIR		=	"$BASEDIR/URLs";
-my $MESSAGE_DIR		=	"$BASEDIR/messages";
+my $URL_DIR		=	"$WWWDIR/URLs";
+my $MESSAGE_DIR		=	"$WWWDIR/messages";
 my $IMAGES_DIR		=	"$WWWDIR/images";
 my $BUTTON_DISPATCHER	=	"button_dispatch";
 
 my %ONLY_ONE_DEFAULTS =
     (
-    "a"	=>	"",		# Alignment tl tc tr ml mc mr bl bc br
-    "b"	=>	"",		# Action if button pressed
-    "e"	=>	"",		# Expires
-    "i"	=>	"",		# ID
-    "r"	=>	"",		# ID to remove
-    "s"	=>	"",		# Screen name
-    "u"	=>	"",		# URL but keep listening for new URLs
-    "U"	=>	"",		# Just replace window with URL
-    "f"	=>	"popup",	# window, frame, popup
-    "m"	=>	"",		# Background medium (jpg, gif, mov)
-    "c"	=>	"white",	# Foreground color
-    "C"	=>	"#3030ff",	# Background color
-    "t"	=>	"",		# Text in block
-    "p"	=>	1,		# Priority of block
-    "d"	=>	"1x1",		# Dimensions of block (rows x columns)
-    "l"	=>	"",		# Block location (or floating)
-    "v"	=>	0
+    "alignment"	=>	[ "tl","tc","tr","ml","mc","mr","bl","bc","br" ],
+    "button"	=>	"",		# Action if button pressed
+    "expires"	=>	"",		# Expires
+    "id"	=>	"",		# ID
+    "removeid"	=>	"",		# ID to remove
+    "screen"	=>	"",		# Screen name
+    "url"	=>	"",		# URL but keep listening for new URLs
+    "URL"	=>	"",		# Just replace window with URL
+    "windowin"	=>	"popup",	# window, frame, popup
+    "media"	=>	"",		# Background medium (jpg, gif, mov)
+    "fgcolor"	=>	"white",	# Foreground color
+    "bgcolor"	=>	"#3030ff",	# Background color
+    "text"	=>	"",		# Text in block
+    "priority"	=>	1,		# Priority of block
+    "dimensions" =>	"1x1",		# Dimensions of block (rows x columns)
+    "location"	=>	"",		# Block location (or floating)
+    "verbosity"	=>	0,		# Location of screen map file
+    "smap"	=>	"$LIBDIR/screens.map",
+    "umap"	=>	"$LIBDIR/URLs.map"
     );
 
-my %SCREEN_MAP =
-    (
-	"fs0"		=>	"fs0",
-	"fs1"		=>	"fs1",
-	"fs2"		=>	"fs2",
-	"ws0"		=>	"ws0",
-	"iPhone-Chris"	=>	"iphone",
-	"iphone"	=>	"iphone",
-	"iPad-devel"	=>	"devel",
-	"ipad-1"	=>	"ipad1",
-	"iPad-4-0"	=>	"ipad4-0",
-	"ipad-4-0"	=>	"ipad4-0",
-	"iPad-4-1"	=>	"ipad4-1",
-	"ipad-4-1"	=>	"ipad4-1",
-	"macbook"	=>	"macbook",
-	"iPad-5Ml"	=>	"5Ml",
-	"iPad-5Mc"	=>	"5Mc",
-	"iPad-5Mr"	=>	"5Mr",
-	"iPad-3Ml"	=>	"3Ml",
-	"iPad-3Mc"	=>	"3Mc",
-	"iPad-3Mr"	=>	"3Mr",
-	"iPad-2Lc"	=>	"2Lc"
-    );
+my %SCREEN_MAP;
 
 my %TABLE_MACROS =
     (	tl	=>	"valign=top align=left",
@@ -145,206 +118,14 @@ my $SCRIPT_END = "</head><body></body></html>";
 
 # Put variables here.
 
-my @problems;
-my %ARGS;
-my @files;
-my $exit_stat = 0;
+our @problems;
+our %ARGS;
+our @files;
+our $exit_stat = 0;
 #my $screen;
 my $cgi_screen;
 my @SCREENS;
 my $IS_CGI;
-
-# Put interesting subroutines here
-
-#=======================================================================#
-#	Verbatim from prototype.pl					#
-#=======================================================================#
-
-#########################################################################
-#	Print a header if need be.					#
-#########################################################################
-my $hdrcount = 0;
-sub CGIheader
-    {
-    print <<EOF if( $hdrcount++ == 0 );
-Content-type:  text/html
-Pragma:  no-cache
-Access-Control-Allow-Origin:  *
-
-EOF
-    }
-
-#########################################################################
-#	Print out a list of error messages and then exit.		#
-#########################################################################
-sub fatal
-    {
-    if( ! $IS_CGI )
-        { print STDERR join("\n",@_,""); }
-    else
-        {
-	&CGIheader();
-	print STDERR "<h2>Fatal error:</h2>\n",
-	    map { "<dd><font color=red>$_</font>\n" } @_;
-	}
-    exit(1);
-    }
-
-
-#########################################################################
-#	Put <form> information into %FORM (from STDIN or ENV).		#
-#########################################################################
-my %FORM;
-sub CGIreceive
-    {
-    my ( $name, $value );
-    my ( @fields, @ignorefields, @requirefields );
-    my ( @parts );
-    my $incoming = "";
-    return if ! defined( $ENV{'REQUEST_METHOD'} );
-    if ($ENV{'REQUEST_METHOD'} eq "POST")
-	{ read(STDIN, $incoming, $ENV{'CONTENT_LENGTH'}); }
-    else
-	{ $incoming = $ENV{'QUERY_STRING'}; }
-    
-    if( defined($ENV{"CONTENT_TYPE"}) &&
-        $ENV{"CONTENT_TYPE"} =~ m#^multipart/form-data# )
-	{
-	my $bnd = $ENV{"CONTENT_TYPE"};
-	$bnd =~ s/.*boundary=//;
-	foreach $_ ( split(/--$bnd/s,$incoming) )
-	    {
-	    if( /^[\r\n]*[^\r\n]* name="([^"]*)"[^\r\n]*\r*\nContent-[^\r\n]*\r*\n\r*\n(.*)[\r]\n/s )
-		{
-		#### Skip generally blank fields
-		next if ($2 eq "");
-
-		#### Allow for multiple values of a single name
-		$FORM{$1} .= "," if ($FORM{$1} ne "");
-
-		$FORM{$1} .= $2;
-
-		#### Add to ordered list if not on list already
-		push (@fields, $1) unless (grep(/^$1$/, @fields));
-		}
-	    elsif( /^[\r\n]*[^\r\n]* name="([^"]*)"[^\r\n]*\r*\n\r*\n(.*)[\r]\n/s )
-		{
-		#### Skip generally blank fields
-		next if ($2 eq "");
-
-		#### Allow for multiple values of a single name
-		$FORM{$1} .= "," if (defined($FORM{$1}) && $FORM{$1} ne "");
-
-		$FORM{$1} .= $2;
-
-		#### Add to ordered list if not on list already
-		push (@fields, $1) unless (grep(/^$1$/, @fields));
-		}
-	    }
-	}
-    else
-	{
-	foreach ( split(/&/, $incoming) )
-	    {
-	    ($name, $value) = split(/=/, $_);
-
-	    $name  =~ tr/+/ /;
-	    $value =~ tr/+/ /;
-	    $name  =~ s/%([A-F0-9][A-F0-9])/pack("C", hex($1))/gie;
-	    $value =~ s/%([A-F0-9][A-F0-9])/pack("C", hex($1))/gie;
-
-	    #### Strip out semicolons unless for special character
-	    $value =~ s/;/$$/g;
-	    $value =~ s/&(\S{1,6})$$/&$1;/g;
-	    $value =~ s/$$/ /g;
-
-	    #$value =~ s/\|/ /g;
-	    $value =~ s/^!/ /g; ## Allow exclamation points in sentences
-
-	    #### Split apart any directive prefixes
-	    #### NOTE: colons are reserved to delimit these prefixes
-	    @parts = split(/:/, $name);
-	    $name = $parts[$#parts];
-	    if (grep(/^require$/, @parts))
-		{
-		push (@requirefields, $name);
-		}
-	    if (grep(/^ignore$/, @parts))
-		{
-		push (@ignorefields, $name);
-		}
-	    if (grep(/^dynamic$/, @parts))
-		{
-		#### For simulating a checkbox
-		#### It may be dynamic, but useless if nothing entered
-		next if ($value eq "");
-		$name = $value;
-		$value = "on";
-		}
-
-	    #### Skip generally blank fields
-	    next if ($value eq "");
-
-	    #### Allow for multiple values of a single name
-	    $FORM{$name} .= "," if( defined($FORM{$name}) && $FORM{$name} ne "");
-	    $FORM{$name} .= $value;
-
-	    #### Add to ordered list if not on list already
-	    push (@fields, $name) unless (grep(/^$name$/, @fields));
-	    }
-	}
-    }
-
-#########################################################################
-#	Print a command and then execute it.				#
-#########################################################################
-sub echodo
-    {
-    my $cmd = join(" ",@_);
-    if( ! $ARGS{v} )
-	{ }	# No need to print commands
-    elsif( $IS_CGI )
-	{ print "<pre>+ $cmd</pre>\n"; }
-    else
-        { print "+ $cmd\n"; }
-    return system( $cmd );
-    }
-
-#########################################################################
-#	Read an entire file and return the contents.			#
-#	If open fails and a return value is not specified, fail.	#
-#########################################################################
-sub read_file
-    {
-    my( $fname, $ret ) = @_;
-    if( open(COM_INF,$fname) )
-        {
-	$ret = do { local $/; <COM_INF> };
-	close( COM_INF );
-	}
-    elsif( scalar(@_) < 2 )
-        { &fatal("Cannot open ${fname}:  $!"); }
-    return $ret;
-    }
-
-#########################################################################
-#	Write an entire file.						#
-#########################################################################
-sub write_file
-    {
-    my( $fname, @contents ) = @_;
-    open( COM_OUT, "> $fname" ) || &fatal("Cannot write ${fname}:  $!");
-    print COM_OUT @contents;
-    close( COM_OUT );
-    }
-
-#=======================================================================#
-#	New code not from prototype.pl					#
-#		Should at least include:				#
-#			parse_arguments()				#
-#			CGI_arguments()					#
-#			usage()						#
-#=======================================================================#
 
 #########################################################################
 #	Setup arguments if CGI.						#
@@ -360,103 +141,25 @@ sub CGI_arguments
 sub usage
     {
     &fatal( @_, "",
-	"Usage:  $PROG <possible arguments>","",
+	"Usage:  $cpi_vars::PROG <possible arguments>","",
 	"where <possible arguments> is:",
-	"    -a	<td cell attributes>",
-	"    -b	<action on button press>",
-	"    -s	<screen name>",
-	"    -r <message id to remove",
-	"    -a	<action if block is pressed",
-	"    -t	<text in block>",
-	"    -i	<background image URL>",
-	"    -c	<text color>",
-	"    -C	<background color>",
-	"    -p	<priority>",
-	"    -d <rows>x<cols>",
-	"    -l <row>,<col>",
-	"    -h	<height>",
-	"    -u	<url to send screen to>",
-	"    -v	<flag> where 0=quiet, 1=verbose",
+	"    -alignment	<td cell attributes>",
+	"    -button	<action on button press>",
+	"    -screen	<screen name>",
+	"    -removeid <message id to remove",
+	"    -text	<text in block>",
+	"    -media	<background image URL>",
+	"    -fgcolor	<text color>",
+	"    -bgcolor	<background color>",
+	"    -priority	<priority>",
+	"    -dimensions <rows>x<cols>",
+	"    -location <row>,<col>",
+	"    -url	<url to send screen to>",
+	"    -verbosity	<flag> where 0=quiet, 1=verbose",
 	"",
 	"If -s is not specified, list screens",
 	"If -s specified, but not -t, -c or -i, list attributes of block"
 	);
-    }
-
-#########################################################################
-#	Parse the arguments						#
-#########################################################################
-sub parse_arguments
-    {
-    my $arg;
-    while( defined($arg = shift(@ARGV) ) )
-	{
-	# Put better argument parsing here.
-
-	if( $arg =~ /^-(.)(.*)$/ && defined($ONLY_ONE_DEFAULTS{$1}) )
-	    {
-	    if( defined($ARGS{$1}) )
-		{ push( @problems, "-$1 specified multiple times." ); }
-	    else
-		{ $ARGS{$1} = ( $2 ne "" ? $2 : shift(@ARGV) ); }
-	    }
-	elsif( $arg =~ /^-(t)(.*)$/ )
-	    {
-	    my $val = ( $2 ? $2 : shift(@ARGV) );
-	    if( $#files <= 0 )
-	        {
-		if( defined($files[$#files]->{$1}) )
-		    {
-		    push( @problems,
-			$files[$#files]->{name} .
-			    " -$1 specified multiple times." );
-		    }
-		else
-		    { $files[$#files]->{$1} = $val; }
-		}
-	    elsif( defined( $ARGS{$1} ) )
-		{ push( @problems, "-$1 specified multiple times." ); }
-	    else
-		{ $ARGS{$1} = $val; }
-	    }
-	elsif( $arg =~ /^-.*/ )
-	    { push( @problems, "Unknown argument [$arg]" ); }
-	else
-	    { push( @files, $arg ); }
-	}
-
-    # Put interesting code here.
-
-    grep( $ARGS{$_}=(defined($ARGS{$_})?$ARGS{$_}:$ONLY_ONE_DEFAULTS{$_}),
-	keys %ONLY_ONE_DEFAULTS );
-
-    #push( @problems, "No files specified" ) if( ! @files );
-    
-    if( $ARGS{f} =~ /^w/i )
-	{ $ARGS{f} = "window"; }
-    elsif( $ARGS{f} =~ /^f/i )
-	{ $ARGS{f} = "frame"; }
-    elsif( $ARGS{f} =~ /^p/i )
-	{ $ARGS{f} = "popup"; }
-    else
-	{ push(@problems,"-f must be 'window', 'frame', or 'popup'."); }
-
-    foreach my $fn ( @files )
-	{
-	if( (! $ARGS{s}) && &is_screen( $fn ) )
-	    { $ARGS{s} = $fn; }
-	elsif( ! $ARGS{u} )
-	    { $ARGS{u} = $fn; }
-	else
-	    { push( @problems, "Unrecognized argument '$fn'." ); }
-	}
-
-     push( @problems, "-l ($ARGS{l}) is not in n,n or ?,? format" )
-	if( $ARGS{l} && $ARGS{l} !~ /^\d+,\d+$/ );
-     push( @problems, "-d ($ARGS{d}) is not in nxn format" )
-	if( $ARGS{d} !~ /^\d+x\d+$/ );
-
-    &usage( @problems ) if( @problems );
     }
 
 #########################################################################
@@ -499,11 +202,12 @@ sub CGI_show_screens
 	    }
 	if( $screen eq $cgi_screen )
 	    {
-	    foreach my $up ( @KNOWN_URLS )
+	    foreach my $uline ( &read_lines( $ARGS{umap} ) )
 		{
+		my( $name, $url ) = split(/\s+/,$uline);
 		push( @s,
 		    "<td><input type=button onClick='window.location.href=\"",
-		    $up->{url}, "\";' value='$up->{name}'",
+		    $url, "\";' value='$name'",
 		    " style='background-color:$bgcolor'></td>" );
 		}
 	    }
@@ -525,7 +229,7 @@ sub url_page
     #$text =~ s/%%SCREEN_URL%%:$SCREEN_URL\/$cgi_screen.html/gms;
     $text =~ s/%%SCREEN_URL%%/$SCREEN_URL/gms;
     $text =~ s/%%SCREEN%%/$cgi_screen/gms;
-    $text =~ s/%%SPAWN_METHOD%%/$ARGS{f}/gms;
+    $text =~ s/%%SPAWN_METHOD%%/$ARGS{windowin}/gms;
     print $text;
     }
 
@@ -536,7 +240,8 @@ sub screen_to_url
     {
     my( $screen ) = @_;
     my $ret;
-    if( $ret = &read_file("$URL_DIR/$screen.html",undef) )
+    #if( $ret = &read_file("$URL_DIR/$screen.html",undef) )
+    if( $ret = &read_file("$URL_DIR/$screen.html","") )
 	{
 	return $1 if( $ret =~ /set_url\('(.*?)',[01]\)/ );
 	return $1 if( $ret =~ /set_url\('(.*?)'\)/ );
@@ -551,17 +256,6 @@ sub screen_to_url
 sub send_url
     {
     &wait_for_file_change( "$URL_DIR/$cgi_screen.html" );
-    }
-
-#########################################################################
-#########################################################################
-sub files_in
-    {
-    my( $dname ) = @_;
-    opendir( D, $dname ) || &fatal("Cannot opendir($dname):  $!");
-    my @ret = readdir(D);
-    closedir( D );
-    return @ret;
     }
 
 #########################################################################
@@ -581,9 +275,9 @@ sub selected_screens
 	    }
 	@SCREENS = sort keys %seen_screen;
 	}
-    return ( ( ! $ARGS{s} || $ARGS{s} eq "all" )
+    return ( ( ! $ARGS{screen} || $ARGS{screen} eq "all" )
  	? @SCREENS
-	: grep( $seen_screen{$_}, split(/,/,$ARGS{s}) ) );
+	: grep( $seen_screen{$_}, split(/,/,$ARGS{screen}) ) );
     }
 
 #########################################################################
@@ -641,8 +335,8 @@ sub set_screen
 	}
     foreach my $screen ( &selected_screens() )
 	{
-	my $filename = "$URL_DIR/$ARGS{s}.html";
-	print "Writing\t$new_url\nto\t$filename\n" if( $ARGS{v} );
+	my $filename = "$URL_DIR/$ARGS{screen}.html";
+	print "Writing\t$new_url\nto\t$filename\n" if( $ARGS{verbosity} );
 
 	&write_file( $filename, <<EOF );
 $SCRIPT_START
@@ -658,6 +352,7 @@ EOF
 #########################################################################
 sub message_page
     {
+    #print "[ $MESSAGES_SCRIPT ]\n";
     my $text = &read_file( $MESSAGES_SCRIPT );
     #$text =~ s:%%MESSAGES_URL%%:$MESSAGES_URL/$cgi_screen.html:gms;
     $text =~ s:%%MESSAGES_URL%%:$MESSAGES_URL:gms;
@@ -700,11 +395,11 @@ sub wait_for_file_change
     $| = 1;	# Try to avoid buffering to web client
     		# so that keep alive works.
 
-    $FORM{since} ||= $DELETED_FILE;
-    &mplog("Last updated $FORM{since} waiting on $filename...");
+    $cpi_vars::FORM{since} ||= $DELETED_FILE;
+    &mplog("Last updated $cpi_vars::FORM{since} waiting on $filename...");
     my $keep_alive = 0;
     my $current_locker;
-    while( ($mtime = ((stat($filename))[9])||$DELETED_FILE)==$FORM{since} )
+    while( ($mtime = ((stat($filename))[9])||$DELETED_FILE)==$cpi_vars::FORM{since} )
 	{
 	# Wish we could detect if the client has died.
         if( 0 )
@@ -747,7 +442,7 @@ sub wait_for_file_change
 #########################################################################
 sub send_messages
     {
-    &wait_for_file_change( "$MESSAGE_DIR/$FORM{screen}.html" );
+    &wait_for_file_change( "$MESSAGE_DIR/$cpi_vars::FORM{screen}.html" );
     }
 
 #########################################################################
@@ -789,24 +484,6 @@ sub list_messages
 		}
 	    }
 	}
-    }
-
-#########################################################################
-#	Your basic "convert to an arbitrary base"			#
-#########################################################################
-my @OI_DIGITS = ( '0'..'9', 'A'..'Z', 'a'..'z' );
-my $OI_N_DIGITS = scalar(@OI_DIGITS);
-sub one_id
-    {
-    my( $id ) = @_;
-    my @res;
-    while( $id || ! @res )
-        {
-	push( @res, $OI_DIGITS[ $id % $OI_N_DIGITS ] );
-	$id = int( $id / $OI_N_DIGITS );
-	#last if( $id == 0 );
-	}
-    return join("",reverse @res);
     }
 
 #########################################################################
@@ -853,54 +530,13 @@ EOF
     }
 
 #########################################################################
-#	Wrote this to avoid ever having to write it again.		#
-#########################################################################
-sub plurals
-    {
-    my( $arg1, $arg2 ) = @_;
-
-    return "1 $arg1" if( $arg2 eq "1" );
-    return "$arg2 ${arg1}s" if( $arg2 =~ /^\d+$/ );
-    return "1 $arg2" if( $arg1 eq "1" );
-    return "$arg1 ${arg2}s" if( $arg1 =~ /^\d+$/ );
-
-    my( $item_type, $fnc, @items ) = @_;
-    my $nitems = scalar(@items);
-    my @pieces;
-    if( $item_type )
-        {
-	if( $fnc eq "nor" )
-	    {
-	    if( $nitems==2 )
-	        { push( @pieces, "neither" ); }
-	    elsif( $nitems > 2 )
-	        { push( @pieces, "none of" ); }
-	    }
-	push( @pieces,
-	    $item_type
-	    . ( $nitems != 1 ? "s" : "" ) );
-	}
-    if( $fnc )
-        {
-	if( $nitems == 2 )
-	    { push( @pieces, $items[0] ); }
-	elsif( $nitems > 2 )
-	    { push( @pieces, join(", ",@items[0..$#items-1]) ); }
-	push( @pieces, $fnc ) if( $nitems > 1 );
-	push( @pieces, $items[$#items] );
-	};
-    return join(" ",@pieces);
-    }
-
-
-#########################################################################
 #	Remove the specified message from the screen list.		#
 #########################################################################
 sub remove_messages
     {
     my @screens;
-    if( $ARGS{s} && $ARGS{s} ne "all" )
-	{ push( @screens, &screen_name_of($ARGS{s}) ); }
+    if( $ARGS{screen} && $ARGS{screen} ne "all" )
+	{ push( @screens, &screen_name_of($ARGS{screen}) ); }
     else
 	{
 	opendir( D, $MESSAGE_DIR ) || &fatal("Cannot open ${MESSAGE_DIR}:  $!");
@@ -909,7 +545,7 @@ sub remove_messages
 	s/\.html$// for @screens;
 	}
 
-    my @ids_to_remove = split(/,/,$ARGS{r});
+    my @ids_to_remove = split(/,/,$ARGS{removeid});
     my $total_changes;
     foreach my $screen ( &selected_screens() )
 	{
@@ -927,10 +563,10 @@ sub remove_messages
 	}
     if( ! $total_changes )
         {
-	print ucfirst( &plurals( "id", "nor", @ids_to_remove ) ),
+	print ucfirst( &list_items( "id", "nor", @ids_to_remove ) ),
 	    ( scalar(@ids_to_remove)==1 ? " was not" : " were" ),
 	    " found in ",
-	    &plurals( "screen", "or", @screens ),
+	    &list_items( "screen", "or", @screens ),
 	    ".\n";
 	}
     }
@@ -940,24 +576,24 @@ sub remove_messages
 #########################################################################
 sub add_message
     {
-    $ARGS{a} = join(" ",(map {$TABLE_MACROS{$_}||$_} split(/[ ,]/,$ARGS{a})));
-    $ARGS{c}=$1, $ARGS{C}=$2 if( $ARGS{c} =~ m:^(.*)/(.*)$: );
-    my $idname = ( $ARGS{i} ? $ARGS{i} : &one_id( time() ) . "." . &one_id( $$ ) );
+    $ARGS{alignment} = join(" ",(map {$TABLE_MACROS{$_}||$_} split(/[ ,]/,$ARGS{alignment})));
+    $ARGS{fgcolor}=$1, $ARGS{bgcolor}=$2 if( $ARGS{fgcolor} =~ m:^(.*)/(.*)$: );
+    my $idname = ( $ARGS{id} ? $ARGS{id} : &compress_integer( time() ) . "." . &compress_integer( $$ ) );
     foreach my $screen ( &selected_screens() )
 	{
 	my %messages = &read_messages($screen);
 	$messages{$idname} =
 	    {
 	    id		=>	$idname,
-	    attributes	=>	$ARGS{a},
-	    priority	=>	$ARGS{p}*1,
-	    fgcolor	=>	$ARGS{c},
-	    bgcolor	=>	$ARGS{C},
-	    dims	=>	[ map {$_*1} split( /[x,]/, $ARGS{d} ) ],
-	    location	=>	[ map {$_*1} split( /[x,]/, $ARGS{l} ) ],
-	    media	=>	$ARGS{m},
-	    button	=>	$ARGS{b},
-	    text	=>	$ARGS{t}
+	    attributes	=>	$ARGS{alignment},
+	    priority	=>	$ARGS{priority}*1,
+	    fgcolor	=>	$ARGS{fgcolor},
+	    bgcolor	=>	$ARGS{bgcolor},
+	    dims	=>	[ map {$_*1} split( /[x,]/, $ARGS{dimensions} ) ],
+	    location	=>	[ map {$_*1} split( /[x,]/, $ARGS{location} ) ],
+	    media	=>	$ARGS{media},
+	    button	=>	$ARGS{button},
+	    text	=>	$ARGS{text}
 	    };
 
 	# This will keep the messages files smaller
@@ -1009,8 +645,8 @@ sub ip_to_host
 #########################################################################
 sub get_screen
     {
-    return $cgi_screen if( ($cgi_screen=$FORM{screen}) && &is_screen($cgi_screen) );
-    return $cgi_screen if( ($cgi_screen=$ARGS{s}) && &is_screen($cgi_screen) );
+    return $cgi_screen if( ($cgi_screen=$cpi_vars::FORM{screen}) && &is_screen($cgi_screen) );
+    return $cgi_screen if( ($cgi_screen=$ARGS{screen}) && &is_screen($cgi_screen) );
 
     my $ip = $ENV{REMOTE_ADDR};
     &fatal("Screen $cgi_screen unknown and cannot determine ip address.") if( ! $ip );
@@ -1038,48 +674,58 @@ if( !@ARGV && $ENV{SCRIPT_NAME} )
     grep( $ARGS{$_}=(defined($ARGS{$_})?$ARGS{$_}:$ONLY_ONE_DEFAULTS{$_}),
 	keys %ONLY_ONE_DEFAULTS );
 
+    ( $_, %SCREEN_MAP ) = &read_map( $ARGS{smap} );
     &get_screen();
 
-    $hdrcount++;
-    $FORM{func} ||= "list";
-    if( $FORM{func} eq "messages" )
+    #$hdrcount++;
+    $cpi_vars::FORM{func} ||= "list";
+    if( $cpi_vars::FORM{func} eq "messages" )
         {
-	#print "FORM{$_}=[$FORM{$_}]<br>\n" for sort keys %FORM;
-	if( ! $FORM{uniqid} )
+	#print "FORM{$_}=[$cpi_vars::FORM{$_}]<br>\n" for sort keys %cpi_vars::FORM;
+	if( ! $cpi_vars::FORM{uniqid} )
 	    { &message_page(); }
-	elsif( $FORM{screen} && $FORM{id} && $FORM{action} )
-	    { &do_action( $cgi_screen, $FORM{id}, $FORM{action} ); }
+	elsif( $cpi_vars::FORM{screen} && $cpi_vars::FORM{id} && $cpi_vars::FORM{action} )
+	    { &do_action( $cgi_screen, $cpi_vars::FORM{id}, $cpi_vars::FORM{action} ); }
 	else
 	    { &send_messages(); }
 	}
-    elsif( $FORM{func} eq "urls" || $FORM{func} eq "startup" )
+    elsif( $cpi_vars::FORM{func} eq "urls" || $cpi_vars::FORM{func} eq "startup" )
         {
-	if( $FORM{uniqid} )
+	if( $cpi_vars::FORM{uniqid} )
 	    { &send_url(); }
 	else
 	    { &url_page(); }
 	}
-    elsif( $FORM{func} eq "list" )
+    elsif( $cpi_vars::FORM{func} eq "list" )
 	{
         &CGI_show_screens();
 	}
     else
-	{ &fatal("Unknown function [$FORM{func}]"); }
+	{ &fatal("Unknown function [$cpi_vars::FORM{func}]"); }
     }
 else
     {
-    &parse_arguments();
-    if( $ARGS{r} )
+    if( scalar(@ARGV)==2 && ($ARGV[0] eq "initdb" || $ARGV[0] eq "-initdb" ))
+	{
+	print "$cpi_vars::PROG does not have any database to init.\n";
+	&cleanup(0);
+	}
+    %ARGS = &parse_arguments({
+	switches	=> \%ONLY_ONE_DEFAULTS,
+	leftovers	=> \@files
+	});
+    ( $_, %SCREEN_MAP ) = &read_map($ARGS{smap});
+    if( $ARGS{removeid} )
 	{ &remove_messages(); }
-    elsif( $ARGS{t} || $ARGS{m} )
+    elsif( $ARGS{text} || $ARGS{media} )
 	{ &add_message(); }
-    elsif( ! $ARGS{s} )
+    elsif( ! $ARGS{screen} )
 	{ &cmd_show_screens(); }
     else
 	{
 	&get_screen();
-	if( $ARGS{u} || $ARGS{U} )
-	    { &set_screen( ($ARGS{u}||$ARGS{U}), ($ARGS{U}?1:0) ); }
+	if( $ARGS{url} || $ARGS{URL} )
+	    { &set_screen( ($ARGS{url}||$ARGS{URL}), ($ARGS{URL}?1:0) ); }
 	else
 	    { &list_messages(); }
 	}
