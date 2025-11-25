@@ -33,6 +33,12 @@ install:
 		$(INSTALL) -d -m 0777 $(WWWDIR)/media
 		$(INSTALL) -d -m 0777 $(WWWDIR)/messages
 		$(INSTALL) -d -m 0777 $(WWWDIR)/URLs
+ifeq (,$(wildcard lib/screens.map*))
+		echo "default" > lib/screens.map
+endif
+ifeq (,$(wildcard lib/URLs.map*))
+		touch lib/screens.map
+endif
 		@$(MAKE) std_install
 
 %:
