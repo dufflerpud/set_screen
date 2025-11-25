@@ -37,7 +37,7 @@ ifeq (,$(wildcard lib/screens.map*))
 		echo "default" > lib/screens.map
 endif
 ifeq (,$(wildcard lib/URLs.map*))
-		touch lib/screens.map
+		touch lib/URLs.map
 endif
 		@$(MAKE) std_install
 
