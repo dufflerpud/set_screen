@@ -78,7 +78,8 @@ function box( corner, size )
 	    }
 	result = new_result;
 	}
-    deblert('box(['+corner.join(':')+'],['+size.join(':')+']) returns ['+result.join(',')+']');
+    // deblert('box(['+corner.join(':')+'],['+size.join(':')+']) returns ['+result.join(',')+']');
+    // console.log('box(['+corner.join(':')+'],['+size.join(':')+']) returns ['+result.join(',')+']\n');
     return result;
     }
 
@@ -200,6 +201,16 @@ function get_mime( filename )
     }
 
 //////////////////////////////////////////////////////////////////////////
+//	Text messages look better in a little table.			//
+//////////////////////////////////////////////////////////////////////////
+function block_text( b )
+    {
+    return "<table><tr>"
+	+ "<td style='color:"+b.fgcolor+";background-color:"+b.bgcolor+"'>"
+	+ b.text+"</td></tr></table>";
+    }
+
+//////////////////////////////////////////////////////////////////////////
 //	User clicked on an image (or movie).				//
 //////////////////////////////////////////////////////////////////////////
 function content_clicked( id )
@@ -220,7 +231,7 @@ function content_clicked( id )
     s.push( "<tr><th width=100% height="+height+"px " + attributes );
     s.push( " style='font-size:x-large;" + colors + "'");
     s.push( " onClick='content_unclicked();'>" );
-    if(b.text) { s.push( "<table><tr><td>"+b.text+"</td></tr></table><br>" ); }
+    if(b.text) { s.push( block_text(b)+"<br>" ); }
     if( filename )
 	{
 	if( /video\//.test(mime_type) )
@@ -306,10 +317,10 @@ function redraw_blocks()
 		    { s.push( "valign=top align=center" ); }
 		else
 		    { s.push( "valign=middle align=center" ); }
-		if( (blockptr.dims[rowdim]||1) > 1 )
-		    { s.push( ' rowspan='+(blockptr.dims[rowdim]) ); }
-		if( (blockptr.dims[coldim]||1) > 1 )
-		    { s.push( ' colspan='+(blockptr.dims[coldim]) ); }
+		if( (blockptr.dimensions[rowdim]||1) > 1 )
+		    { s.push( ' rowspan='+(blockptr.dimensions[rowdim]) ); }
+		if( (blockptr.dimensions[coldim]||1) > 1 )
+		    { s.push( ' colspan='+(blockptr.dimensions[coldim]) ); }
 		var atts = new Array();
 		if( blockptr.fgcolor )
 		    {
@@ -359,7 +370,7 @@ function redraw_blocks()
 		s.push('>');
 		// s.push( ind+': ' );
 		if( blockptr.text )
-		    { s.push( "<table><tr><td>"+blockptr.text+"</td></tr></table>" ); }
+		    { s.push( block_text(blockptr) ); }
 		if( /video\//.test(mime_type) )
 		    {
 		    s.push('<video width=100% height=100% autoplay loop muted>');
@@ -374,6 +385,7 @@ function redraw_blocks()
     s.push('</tr>\n</table>\n');
     // (idp('big_table')).innerHTML = s.join('');
     var new_screen = s.join('');
+    // console.log( new_screen );
     // alert( new_screen );
     if( new_screen != old_screen )
 	{
@@ -434,7 +446,7 @@ function place_block(to_place)
 		{
 		var new_coord_inds = new Array();
 		deblert("looking_for=["+looking_for+"]");
-		for( var offset_coord_ind of box( coords, to_place.dims ) )
+		for( var offset_coord_ind of box( coords, to_place.dimensions ) )
 		    {
 		    var chk = at_location[ offset_coord_ind ];
 		    if( typeof chk!=='undefined' && ( chk==looking_for || chk==EMPTY ) )
@@ -533,7 +545,7 @@ function place_block(to_place)
 // alert("CMC 1015");
 function update_blocks( new_blocks, new_last_modified )
     {
-    // alert("new_last_modified="+new_last_modified);
+    // console.log("new_last_modified="+new_last_modified+"\n");
     var resulting_blocks = new Array();
     for( var block_ind in current_blocks )
 	{

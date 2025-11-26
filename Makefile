@@ -33,6 +33,8 @@ install:
 		$(INSTALL) -d -m 0777 $(WWWDIR)/media
 		$(INSTALL) -d -m 0777 $(WWWDIR)/messages
 		$(INSTALL) -d -m 0777 $(WWWDIR)/URLs
+		[ -h /usr/local/bin/$(PROJECT) ] || \
+		    ln -s $(WWWDIR)/index.cgi /usr/local/bin/$(PROJECT)
 ifeq (,$(wildcard lib/screens.map*))
 		echo "default" > lib/screens.map
 endif

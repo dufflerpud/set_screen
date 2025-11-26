@@ -26,7 +26,8 @@ use cpi_arguments qw( parse_arguments );
 use cpi_english qw( list_items );
 use cpi_compress_integer qw( compress_integer );
 use cpi_config qw( read_map );
-use cpi_reorder qw( reorder );
+use cpi_reorder qw( orderer );
+use cpi_template qw( template );
 use cpi_vars;
 
 #use Data::Dumper;
@@ -45,17 +46,15 @@ my $TMP			=	"/tmp/$cpi_vars::PROG.$$";
 my $LIBDIR		=	"$cpi_vars::BASEDIR/lib";
 
 my $WWWDIR		=	"%%WWWDIR%%";
-$WWWDIR			=	"/home/chris/public_html/$cpi_vars::PROG"
-				    if( ! -d $WWWDIR );
 
 my $URLS_SCRIPT		=	"$LIBDIR/URLs.html";
 my $MESSAGES_SCRIPT	=	"$LIBDIR/messages.html";
 
 my $ORIGIN		=	$ENV{SERVER_NAME} || "Not web";
-my $IP_BASE		=	"10.1.0";
-my $BSCRED		=	"user=chris&password=ratcatcher";
 my $REQUEST_SCHEME	=	($ENV{REQUEST_SCHEME}||"");
-my $URL			=	"${REQUEST_SCHEME}://$ORIGIN/~chris/set_screen";
+my $REQUEST_SCRIPT	=	($ENV{REQUEST_URI}||"");
+$REQUEST_SCRIPT		=~	s:/*\?.*::;
+my $URL			=	"${REQUEST_SCHEME}://$ORIGIN$REQUEST_SCRIPT";
 #my $MESSAGES_URL	=	"$URL/messages";
 my $MESSAGES_URL	=	"$URL";
 #my $SCREEN_URL		=	"$URL/URLs";
@@ -77,7 +76,7 @@ my %ONLY_ONE_DEFAULTS =
     "screen"	=>	"",		# Screen name
     "url"	=>	"",		# URL but keep listening for new URLs
     "URL"	=>	"",		# Just replace window with URL
-    "windowin"	=>	"popup",	# window, frame, popup
+    "windowin"	=>	[ "popup", "frame", "window" ],
     "media"	=>	"",		# Background medium (jpg, gif, mov)
     "fgcolor"	=>	"white",	# Foreground color
     "bgcolor"	=>	"#3030ff",	# Background color
@@ -185,10 +184,8 @@ sub CGI_show_screens
 	"background-size:cover;background-repeat:no-repeat;",
 	"background-position:center center;\">",
 	"<form><center><table>" );
-    my @screen_order = &reorder( {before=>[$cgi_screen]}, &selected_screens() );
-    print STDERR __LINE__, " screen_order=[",join(",",@screen_order),"]\n";
     foreach my $screen (
-	&reorder(
+	&orderer(
 	    {before=>[$cgi_screen]},
 	    &selected_screens()
 	    ) )
@@ -226,16 +223,11 @@ sub CGI_show_screens
 #########################################################################
 sub url_page
     {
-    my $ip;
-    my $url;
-
-    my $text = &read_file( $URLS_SCRIPT );
-    $text =~ s/%%URL%%/$URL/gms;
-    #$text =~ s/%%SCREEN_URL%%:$SCREEN_URL\/$cgi_screen.html/gms;
-    $text =~ s/%%SCREEN_URL%%/$SCREEN_URL/gms;
-    $text =~ s/%%SCREEN%%/$cgi_screen/gms;
-    $text =~ s/%%SPAWN_METHOD%%/$ARGS{windowin}/gms;
-    print $text;
+    print &template( $URLS_SCRIPT,
+    	"%%URL%%",$URL,
+    	"%%SCREEN_URL%%",$SCREEN_URL,
+    	"%%SCREEN%%",$cgi_screen,
+    	"%%SPAWN_METHOD%%",$ARGS{windowin} );
     }
 
 #########################################################################
@@ -274,10 +266,11 @@ sub selected_screens
 	{ %seen_screen = map { ($_,1) } @SCREENS; }
     else
 	{
-	foreach my $fn ( ( &files_in($URL_DIR), &files_in($MESSAGE_DIR) ) )
-	    {
-	    $seen_screen{$1}=1 if($fn =~ /^([^\.]+)\.(html|html\.daemon)$/);
-	    }
+#	foreach my $fn ( ( &files_in($URL_DIR), &files_in($MESSAGE_DIR) ) )
+#	    {
+#	    $seen_screen{$1}=1 if($fn =~ /^([^\.]+)\.(html|html\.daemon)$/);
+#	    }
+	%seen_screen = map { ($_,1) } values %SCREEN_MAP;
 	@SCREENS = sort keys %seen_screen;
 	}
     return ( ( ! $ARGS{screen} || $ARGS{screen} eq "all" )
@@ -358,12 +351,10 @@ EOF
 sub message_page
     {
     #print "[ $MESSAGES_SCRIPT ]\n";
-    my $text = &read_file( $MESSAGES_SCRIPT );
-    #$text =~ s:%%MESSAGES_URL%%:$MESSAGES_URL/$cgi_screen.html:gms;
-    $text =~ s:%%MESSAGES_URL%%:$MESSAGES_URL:gms;
-    $text =~ s/%%URL%%/$URL/gms;
-    $text =~ s/%%SCREEN%%/$cgi_screen/gms;
-    print $text;
+    print &template( $MESSAGES_SCRIPT,
+	"%%MESSAGES_URL%%",$MESSAGES_URL,
+	"%%URL%%",$URL,
+	"%%SCREEN%%",$cgi_screen);
     }
 
 #########################################################################
@@ -481,7 +472,7 @@ sub list_messages
 		    $messages{$id}{priority},
 		    ($messages{$id}{fgcolor} || "?"),
 		    ($messages{$id}{bgcolor} || "?"),
-		    $messages{$id}{dims}[0], $messages{$id}{dims}[1],
+		    $messages{$id}{dimensions}[0], $messages{$id}{dimensions}[1],
 		    scalar( @{$messages{$id}{location}} ) >= 2
 			? ($messages{$id}{location}[0].",".$messages{$id}{location}[1]) : "?",
 		    ($messages{$id}{media} || "?"),
@@ -594,7 +585,7 @@ sub add_message
 	    priority	=>	$ARGS{priority}*1,
 	    fgcolor	=>	$ARGS{fgcolor},
 	    bgcolor	=>	$ARGS{bgcolor},
-	    dims	=>	[ map {$_*1} split( /[x,]/, $ARGS{dimensions} ) ],
+	    dimensions	=>	[ map {$_*1} split( /[x,]/, $ARGS{dimensions} ) ],
 	    location	=>	[ map {$_*1} split( /[x,]/, $ARGS{location} ) ],
 	    media	=>	$ARGS{media},
 	    button	=>	$ARGS{button},
@@ -678,8 +669,15 @@ if( !@ARGV && $ENV{SCRIPT_NAME} )
     $IS_CGI = 1;
     &CGI_arguments();
     &CGIheader();
-    grep( $ARGS{$_}=(defined($ARGS{$_})?$ARGS{$_}:$ONLY_ONE_DEFAULTS{$_}),
-	keys %ONLY_ONE_DEFAULTS );
+#    grep( $ARGS{$_}=(defined($ARGS{$_})?$ARGS{$_}:$ONLY_ONE_DEFAULTS{$_}),
+#	keys %ONLY_ONE_DEFAULTS );
+
+    # Note that this will simply set everything to default values as
+    # ARGV will be empty.
+    %ARGS = &parse_arguments({
+	switches	=> \%ONLY_ONE_DEFAULTS,
+	leftovers	=> \@files
+	});
 
     ( $_, %SCREEN_MAP ) = &read_map( $ARGS{smap} );
     &get_screen();
