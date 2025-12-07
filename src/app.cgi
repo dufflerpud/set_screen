@@ -38,7 +38,7 @@ use JSON;
 my $LOGTAG = $$;
 my $LOGFILE = "/var/log/stderr/set_screen";
 close( STDERR );
-open( STDERR, ">> $LOGFILE" ) || die("Cannot open stderr:  $!");
+open( STDERR, ">> $LOGFILE" ) || &fatal("Cannot open stderr ${LOGFILE}:  $!");
 
 my $TMP			=	"/tmp/$cpi_vars::PROG.$$";
 #my $TMP		=	"/tmp/$cpi_vars::PROG";
