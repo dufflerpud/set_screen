@@ -20,7 +20,7 @@ use strict;
 
 use lib "/usr/local/lib/perl";
 use cpi_file qw( read_file write_file echodo fatal files_in cleanup
- read_lines );
+ read_lines new_stderr );
 use cpi_cgi qw( CGIreceive CGIheader );
 use cpi_arguments qw( parse_arguments );
 use cpi_english qw( list_items );
