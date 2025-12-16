@@ -75,7 +75,7 @@ my %ONLY_ONE_DEFAULTS =
     "removeid"	=>	"",		# ID to remove
     "screen"	=>	"",		# Screen name
     "url"	=>	"",		# URL but keep listening for new URLs
-    "URL"	=>	"",		# Just replace window with URL
+    "replaceurl"=>	"",		# Just replace window with URL
     "windowin"	=>	[ "popup", "frame", "window" ],
     "media"	=>	"",		# Background medium (jpg, gif, mov)
     "fgcolor"	=>	"white",	# Foreground color
@@ -84,9 +84,9 @@ my %ONLY_ONE_DEFAULTS =
     "priority"	=>	1,		# Priority of block
     "dimensions" =>	"1x1",		# Dimensions of block (rows x columns)
     "location"	=>	"",		# Block location (or floating)
-    "verbosity"	=>	0,		# Location of screen map file
     "smap"	=>	"$LIBDIR/screens.map",
-    "umap"	=>	"$LIBDIR/URLs.map"
+    "umap"	=>	"$LIBDIR/URLs.map",
+    "verbosity"	=>	0,		# Location of screen map file
     );
 
 my %SCREEN_MAP;
@@ -729,8 +729,8 @@ else
     else
 	{
 	&get_screen();
-	if( $ARGS{url} || $ARGS{URL} )
-	    { &set_screen( ($ARGS{url}||$ARGS{URL}), ($ARGS{URL}?1:0) ); }
+	if( $ARGS{url} || $ARGS{replaceurl} )
+	    { &set_screen( ($ARGS{url}||$ARGS{replaceurl}), ($ARGS{replaceurl}?1:0) ); }
 	else
 	    { &list_messages(); }
 	}
