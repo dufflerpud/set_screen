@@ -40,7 +40,7 @@ test:		$(RESDIR)/.must_exist
 		$(BINDIR)/simple_routing < tests/1 > $(RESDIR)/1
 
 reset:
-		make install
+		$(MAKE) install
 		killproc -y perl
 		cat /dev/null > $(LOGFILE)
 		tail -f $(LOGFILE)
