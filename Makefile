@@ -53,8 +53,8 @@ install:
 		$(INSTALL) -d -m 0777 $(WWWDIR)/media
 		$(INSTALL) -d -m 0777 $(WWWDIR)/messages
 		$(INSTALL) -d -m 0777 $(WWWDIR)/URLs
-		-$(RM) -f /usr/local/bin/$(PROJECT) 2>/dev/null
-		$(LN) -s $(WWWDIR)/index.cgi /usr/local/bin/$(PROJECT)
+		-$(RM) -f $(USRLOCAL)/bin/$(PROJECT) 2>/dev/null
+		$(LN) -s $(WWWDIR)/index.cgi $(USRLOCAL)/bin/$(PROJECT)
 ifeq (,$(wildcard lib/screens.map*))
 		echo "default" > lib/screens.map
 endif
@@ -65,4 +65,5 @@ endif
 
 %:
 		@echo "Invoking std_$@ rule:"
-		@$(MAKE) std_$@ ORIGINAL_TARGET=$@
+		@$(MAKE) ORIGINAL_TARGET=$@ st
+d_$@
