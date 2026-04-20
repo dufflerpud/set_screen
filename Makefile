@@ -60,6 +60,9 @@ ifeq (,$(wildcard lib/URLs.map*))
 endif
 		@$(MAKE) std_install
 
+test:
+		$(SYSTEMBIN)/$(PROGRAM)		# Should just dump config
+
 %:
 		@echo "Invoking std_$@ rule:"
 		@$(MAKE) ORIGINAL_TARGET=$@ std_$@
