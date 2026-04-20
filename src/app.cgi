@@ -53,8 +53,12 @@ use JSON;
 
 my $LOGTAG = $$;
 my $LOGFILE = "/var/log/stderr/set_screen";
-&new_stderr( ">>$LOGFILE" ) || &fatal("Cannot stderr ${LOGFILE}:  $!");
-chmod( 0666, $LOGFILE );
+
+if( $ENV{SCRIPT_FILENAME} )
+    {
+    &new_stderr( ">>$LOGFILE" ) || &fatal("Cannot stderr ${LOGFILE}:  $!");
+    chmod( 0666, $LOGFILE );
+    }
 
 my $TMP			=	"/tmp/$cpi_vars::PROG.$$";
 #my $TMP		=	"/tmp/$cpi_vars::PROG";
